@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RYDR — Email bekræftet</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    background:#080808;
+    color:#f0ede8;
+    font-family:'DM Sans',sans-serif;
+    min-height:100vh;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    overflow:hidden;
+  }
+
+  .glow {
+    position:fixed;
+    top:0; left:50%;
+    transform:translateX(-50%);
+    width:600px; height:400px;
+    background:rgba(190,242,100,0.07);
+    filter:blur(160px);
+    border-radius:50%;
+    pointer-events:none;
+  }
+
+  .card {
+    position:relative;
+    z-index:1;
+    text-align:center;
+    padding:60px 48px;
+    max-width:480px;
+    width:90%;
+    background:rgba(255,255,255,0.03);
+    border:1px solid rgba(255,255,255,0.07);
+    border-radius:28px;
+    animation:fadeUp 0.6s ease both;
+  }
+
+  .logo {
+    font-family:'Bebas Neue',sans-serif;
+    font-size:28px;
+    letter-spacing:6px;
+    color:#bef264;
+    margin-bottom:36px;
+  }
+
+  .check-wrap {
+    width:80px; height:80px;
+    background:rgba(190,242,100,0.1);
+    border:1px solid rgba(190,242,100,0.3);
+    border-radius:50%;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    margin:0 auto 28px;
+    animation:pop 0.4s ease 0.3s both;
+  }
+
+  .check {
+    width:36px; height:36px;
+    stroke:#bef264;
+    stroke-width:2.5;
+    fill:none;
+    stroke-linecap:round;
+    stroke-linejoin:round;
+  }
+
+  .check-path {
+    stroke-dasharray:50;
+    stroke-dashoffset:50;
+    animation:draw 0.4s ease 0.6s forwards;
+  }
+
+  h1 {
+    font-family:'Bebas Neue',sans-serif;
+    font-size:36px;
+    letter-spacing:2px;
+    margin-bottom:12px;
+    color:#f0ede8;
+  }
+
+  p {
+    font-size:15px;
+    color:rgba(255,255,255,0.5);
+    line-height:1.7;
+    font-weight:300;
+    margin-bottom:36px;
+  }
+
+  .btn {
+    display:inline-block;
+    background:#bef264;
+    color:#000;
+    font-family:'DM Sans',sans-serif;
+    font-size:14px;
+    font-weight:600;
+    padding:14px 32px;
+    border-radius:12px;
+    text-decoration:none;
+    transition:all 0.3s;
+    cursor:pointer;
+    border:none;
+  }
+
+  .btn:hover {
+    transform:scale(1.04);
+    box-shadow:0 0 30px rgba(190,242,100,0.3);
+  }
+
+  .divider {
+    width:40px; height:1px;
+    background:rgba(255,255,255,0.1);
+    margin:32px auto;
+  }
+
+  .sub {
+    font-size:12px;
+    color:rgba(255,255,255,0.25);
+    letter-spacing:0.5px;
+  }
+
+  @keyframes fadeUp {
+    from { opacity:0; transform:translateY(20px); }
+    to   { opacity:1; transform:translateY(0); }
+  }
+
+  @keyframes pop {
+    from { transform:scale(0.6); opacity:0; }
+    to   { transform:scale(1); opacity:1; }
+  }
+
+  @keyframes draw {
+    to { stroke-dashoffset:0; }
+  }
+</style>
+</head>
+<body>
+
+<div class="glow"></div>
+
+<div class="card">
+  <div class="logo">RYDR</div>
+
+  <div class="check-wrap">
+    <svg class="check" viewBox="0 0 36 36">
+      <path class="check-path" d="M6 18 L14 26 L30 10"/>
+    </svg>
+  </div>
+
+  <h1>Email bekræftet!</h1>
+  <p>Din konto er nu aktiveret og klar til brug. Log ind og begynd at træne smartere med Rydr.</p>
+
+  <a href="https://apprydr.netlify.app" class="btn">Åbn Rydr →</a>
+
+  <div class="divider"></div>
+  <div class="sub">© 2026 Rydr — AI-drevet cykeltræning</div>
+</div>
+
+</body>
+</html>

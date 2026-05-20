@@ -1,0 +1,795 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>RYDR App</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2">
+  // SETTINGS MODAL
+  let currentSetting = null;
+  const settingConfig = {
+    maal:  { title:'Mit mål',   label:'Hvad er dit mål?',        placeholder:'Fx: Køre 200km på 6 timer', type:'text' },
+    cykel: { title:'Min cykel', label:'Hvad hedder din cykel?',  placeholder:'Fx: Trek Domane SL5',       type:'text' },
+    puls:  { title:'Max puls',  label:'Din max puls (bpm)',       placeholder:'Fx: 196',                   type:'number' },
+    ftp:   { title:'FTP',       label:'Din FTP i watt',          placeholder:'Fx: 248',                   type:'number' },
+    navn:  { title:'Mit navn',  label:'Dit navn',                placeholder:'Fx: August',                type:'text' },
+  };
+
+  function openSetting(key) {
+    currentSetting = key;
+    const cfg = settingConfig[key];
+    document.getElementById('smodalTitle').textContent = cfg.title;
+    document.getElementById('smodalLabel').textContent = cfg.label;
+    const inp = document.getElementById('smodalInput');
+    inp.placeholder = cfg.placeholder;
+    inp.type = cfg.type;
+    // Pre-fill with current value
+    const cur = document.getElementById('val-' + key)?.textContent.replace(' ›','').replace('Sæt mål','').replace('Tilføj','').replace('Indstil','').replace('Rediger','').trim();
+    inp.value = (cur && cur.length > 0 && !['Sæt mål','Tilføj','Indstil','Rediger'].includes(cur)) ? cur : '';
+    document.getElementById('smodalFeedback').textContent = '';
+    document.getElementById('smodalOverlay').classList.add('open');
+    setTimeout(() => inp.focus(), 300);
+  }
+
+  function closeSetting() {
+    document.getElementById('smodalOverlay').classList.remove('open');
+    currentSetting = null;
+  }
+
+  async function saveSetting() {
+    if (!currentSetting || !currentUser) return;
+    const val = document.getElementById('smodalInput').value.trim();
+    if (!val) return;
+
+    document.getElementById('smodalSave').disabled = true;
+    document.getElementById('smodalSave').textContent = 'Gemmer...';
+
+    const updateData = {};
+    if (currentSetting === 'maal')  updateData.maal = val;
+    if (currentSetting === 'cykel') updateData.cykel = val;
+    if (currentSetting === 'puls')  updateData.max_puls = parseInt(val);
+    if (currentSetting === 'ftp')   updateData.ftp = parseInt(val);
+    if (currentSetting === 'navn')  updateData.navn = val;
+
+    const { error } = await sb.from('profiles').update(updateData).eq('id', currentUser.id);
+
+    document.getElementById('smodalSave').disabled = false;
+    document.getElementById('smodalSave').textContent = 'Gem →';
+
+    if (error) {
+      document.getElementById('smodalFeedback').textContent = 'Fejl — prøv igen';
+      document.getElementById('smodalFeedback').style.color = '#ff6b6b';
+      return;
+    }
+
+    document.getElementById('smodalFeedback').textContent = '✓ Gemt!';
+    document.getElementById('smodalFeedback').style.color = 'var(--accent)';
+
+    // Update displayed value
+    const el = document.getElementById('val-' + currentSetting);
+    if (el) el.textContent = val + ' ›';
+
+    // Update name in profile if changed
+    if (currentSetting === 'navn') {
+      document.getElementById('profil-navn').textContent = val;
+      document.getElementById('home-navn').innerHTML = val + ' <span>🚴</span>';
+      document.getElementById('profil-av').textContent = val.charAt(0).toUpperCase();
+    }
+
+    setTimeout(() => closeSetting(), 1000);
+  }
+
+</script>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  :root {
+    --accent:#bef264;
+    --bg:#080808;
+    --card:#111;
+    --card2:#161616;
+    --border:#1e1e1e;
+    --muted:#666;
+    --text:#f0ede8;
+  }
+  html,body { height:100%; }
+  body { background:var(--bg); color:var(--text); font-family:'DM Sans',sans-serif; max-width:390px; margin:0 auto; height:100vh; display:flex; flex-direction:column; overflow:hidden; }
+
+  /* PAGES */
+  .page { display:none; flex-direction:column; flex:1; overflow-y:auto; padding-bottom:76px; scrollbar-width:none; }
+  .page::-webkit-scrollbar { display:none; }
+  .page.active { display:flex; animation:fadeIn 0.2s ease; }
+  @keyframes fadeIn { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
+
+  /* AUTH PAGE */
+  .auth-page { display:none; flex-direction:column; flex:1; align-items:center; justify-content:center; padding:32px; }
+  .auth-page.active { display:flex; }
+  .auth-logo { font-family:'Bebas Neue',sans-serif; font-size:48px; letter-spacing:6px; color:var(--accent); margin-bottom:8px; }
+  .auth-tag { font-size:12px; color:var(--muted); letter-spacing:2px; text-transform:uppercase; margin-bottom:48px; }
+  .auth-tabs { display:flex; border:1px solid var(--border); border-radius:12px; overflow:hidden; margin-bottom:28px; width:100%; }
+  .atab { flex:1; padding:12px; background:transparent; border:none; color:var(--muted); font-family:'DM Sans',sans-serif; font-size:13px; cursor:pointer; transition:all 0.2s; }
+  .atab.on { background:var(--accent); color:#000; font-weight:600; }
+  .aform { width:100%; display:block; }
+  .afield { margin-bottom:14px; }
+  .afield label { display:block; font-size:10px; color:var(--muted); letter-spacing:1.5px; text-transform:uppercase; margin-bottom:8px; }
+  .afield input { width:100%; background:var(--card); border:1px solid var(--border); color:var(--text); font-family:'DM Sans',sans-serif; font-size:15px; padding:14px 16px; border-radius:12px; outline:none; transition:border-color 0.2s; }
+  .afield input:focus { border-color:rgba(190,242,100,0.5); }
+  .afield input::placeholder { color:#333; }
+  .auth-btn { width:100%; padding:15px; background:var(--accent); color:#000; border:none; border-radius:12px; font-family:'DM Sans',sans-serif; font-size:15px; font-weight:600; cursor:pointer; margin-top:4px; transition:all 0.2s; }
+  .auth-btn:hover { opacity:0.9; }
+  .auth-err { color:#ff6b6b; font-size:12px; text-align:center; margin-top:12px; min-height:18px; }
+
+  /* TOPBAR */
+  .topbar { padding:20px 20px 8px; display:flex; justify-content:space-between; align-items:center; flex-shrink:0; }
+  .tlogo { font-family:'Bebas Neue',sans-serif; font-size:22px; letter-spacing:4px; color:var(--accent); }
+  .tavatar { width:36px; height:36px; background:var(--card2); border:1px solid var(--border); border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:15px; cursor:pointer; }
+
+  /* HOME */
+  .greeting { padding:4px 20px 20px; }
+  .greeting small { font-size:12px; color:var(--muted); display:block; margin-bottom:2px; }
+  .greeting h2 { font-family:'Bebas Neue',sans-serif; font-size:30px; letter-spacing:1px; }
+  .greeting h2 span { color:var(--accent); }
+
+  .hero-card { margin:0 20px 20px; background:var(--accent); border-radius:20px; padding:22px; color:#000; position:relative; overflow:hidden; cursor:pointer; transition:transform 0.2s; }
+  .hero-card:active { transform:scale(0.98); }
+  .hero-card::after { content:'🚴'; position:absolute; right:-10px; bottom:-14px; font-size:80px; opacity:0.12; pointer-events:none; }
+  .hero-card small { font-size:10px; font-weight:600; letter-spacing:1.5px; text-transform:uppercase; opacity:0.6; display:block; margin-bottom:6px; }
+  .hero-card h3 { font-family:'Bebas Neue',sans-serif; font-size:44px; line-height:1; letter-spacing:1px; margin-bottom:2px; }
+  .hero-card p { font-size:12px; opacity:0.65; margin-bottom:18px; }
+  .hero-start { display:inline-flex; align-items:center; gap:6px; background:#000; color:var(--accent); border:none; padding:9px 18px; border-radius:100px; font-family:'DM Sans',sans-serif; font-size:12px; font-weight:600; cursor:pointer; }
+
+  .row-label { padding:0 20px 10px; font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:2px; }
+
+  .stats-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; padding:0 20px 20px; }
+  .scard { background:var(--card); border:1px solid var(--border); border-radius:16px; padding:16px; }
+  .scard .num { font-family:'Bebas Neue',sans-serif; font-size:30px; color:var(--text); letter-spacing:0.5px; }
+  .scard .unit { font-size:12px; color:var(--muted); margin-left:2px; }
+  .scard .lbl { font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; margin-top:2px; }
+
+  .action-list { padding:0 20px 20px; display:flex; flex-direction:column; gap:8px; }
+  .arow { background:var(--card); border:1px solid var(--border); border-radius:16px; padding:14px 16px; display:flex; align-items:center; gap:12px; cursor:pointer; transition:all 0.2s; }
+  .arow:active { transform:scale(0.98); }
+  .aicon { width:38px; height:38px; background:var(--bg); border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:16px; flex-shrink:0; }
+  .atext p { font-size:14px; font-weight:500; }
+  .atext small { font-size:11px; color:var(--muted); }
+  .achev { margin-left:auto; color:var(--muted); font-size:18px; }
+
+  /* TRÆNING */
+  .page-title { padding:20px 20px 16px; font-family:'Bebas Neue',sans-serif; font-size:30px; letter-spacing:2px; }
+  .week-strip { padding:0 20px 20px; display:flex; gap:6px; }
+  .day-col { flex:1; display:flex; flex-direction:column; align-items:center; gap:5px; }
+  .day-col span { font-size:9px; color:var(--muted); text-transform:uppercase; }
+  .ddot { width:34px; height:34px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:600; }
+  .ddot.done { background:var(--accent); color:#000; }
+  .ddot.today { background:var(--card2); border:2px solid var(--accent); color:var(--accent); }
+  .ddot.rest { background:var(--card); color:var(--muted); font-size:14px; }
+  .ddot.next { background:var(--card); color:#333; font-size:10px; }
+  .t-list { padding:0 20px; display:flex; flex-direction:column; gap:8px; }
+  .tcard { background:var(--card); border:1px solid var(--border); border-radius:16px; padding:16px; display:flex; align-items:center; gap:12px; cursor:pointer; }
+  .tcard:active { transform:scale(0.98); }
+  .tcard.today-card { border-left:3px solid var(--accent); }
+  .tcard.done-card { opacity:0.55; }
+  .tic { width:44px; height:44px; background:var(--bg); border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:20px; flex-shrink:0; }
+  .tinfo p { font-size:14px; font-weight:500; }
+  .tinfo small { font-size:11px; color:var(--muted); }
+  .tbadge { margin-left:auto; font-size:10px; padding:4px 10px; border-radius:100px; font-weight:600; white-space:nowrap; }
+  .tbadge.today { background:var(--accent); color:#000; }
+  .tbadge.done { background:rgba(190,242,100,0.1); color:var(--accent); }
+  .tbadge.soon { background:var(--card2); color:var(--muted); }
+
+  /* LOG */
+  .log-form { padding:0 20px; display:flex; flex-direction:column; gap:12px; }
+  .lfield label { display:block; font-size:10px; color:var(--muted); letter-spacing:1.5px; text-transform:uppercase; margin-bottom:8px; }
+  .lfield input, .lfield select { width:100%; background:var(--card); border:1px solid var(--border); color:var(--text); font-family:'DM Sans',sans-serif; font-size:15px; padding:14px 16px; border-radius:12px; outline:none; transition:border-color 0.2s; -webkit-appearance:none; }
+  .lfield input:focus { border-color:rgba(190,242,100,0.5); }
+  .lfield input::placeholder { color:#333; }
+  .lfield select option { background:#111; }
+  .row2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .log-btn { margin:8px 20px 0; background:var(--accent); color:#000; border:none; width:calc(100% - 40px); padding:16px; border-radius:14px; font-family:'DM Sans',sans-serif; font-size:15px; font-weight:600; cursor:pointer; transition:all 0.2s; }
+  .log-btn:disabled { opacity:0.5; cursor:not-allowed; }
+  .log-success { display:none; margin:0 20px; background:rgba(190,242,100,0.1); border:1px solid rgba(190,242,100,0.3); border-radius:14px; padding:20px; text-align:center; }
+  .log-success .big { font-size:32px; margin-bottom:8px; }
+  .log-success p { font-size:14px; color:var(--accent); font-weight:500; }
+  .log-success small { font-size:12px; color:var(--muted); }
+
+  /* RECENT TURE */
+  .recent-list { padding:0 20px; display:flex; flex-direction:column; gap:8px; margin-top:16px; }
+  .rtur { background:var(--card); border:1px solid var(--border); border-radius:14px; padding:14px 16px; display:flex; justify-content:space-between; align-items:center; }
+  .rtur-left p { font-size:14px; font-weight:500; }
+  .rtur-left small { font-size:11px; color:var(--muted); }
+  .rtur-right { text-align:right; }
+  .rtur-right p { font-family:'Bebas Neue',sans-serif; font-size:20px; color:var(--accent); letter-spacing:0.5px; }
+  .rtur-right small { font-size:10px; color:var(--muted); }
+
+  /* AI CHAT */
+  .chat-msgs { flex:1; padding:16px 16px 8px; display:flex; flex-direction:column; gap:14px; overflow-y:auto; scrollbar-width:none; }
+  .chat-msgs::-webkit-scrollbar { display:none; }
+  .msg { display:flex; gap:8px; animation:fadeIn 0.3s ease; }
+  .msg.user { flex-direction:row-reverse; }
+  .av { width:28px; height:28px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:600; flex-shrink:0; font-family:'Bebas Neue',sans-serif; letter-spacing:1px; }
+  .av.ai { background:var(--accent); color:#000; }
+  .av.user { background:var(--card2); color:var(--muted); }
+  .bbl { max-width:78%; padding:11px 14px; font-size:13px; line-height:1.6; font-weight:300; border-radius:16px; }
+  .bbl.ai { background:var(--card); color:var(--text); border-bottom-left-radius:4px; }
+  .bbl.user { background:#1c1c1c; color:var(--text); border-bottom-right-radius:4px; }
+  .typing { display:flex; gap:4px; align-items:center; padding:11px 14px; background:var(--card); border-radius:16px; border-bottom-left-radius:4px; width:fit-content; }
+  .typing span { width:5px; height:5px; background:var(--accent); border-radius:50%; animation:bounce 1.2s infinite; }
+  .typing span:nth-child(2){animation-delay:0.2s} .typing span:nth-child(3){animation-delay:0.4s}
+  @keyframes bounce { 0%,60%,100%{transform:translateY(0)} 30%{transform:translateY(-4px)} }
+  .chips { display:flex; gap:8px; padding:0 16px 8px; overflow-x:auto; scrollbar-width:none; }
+  .chips::-webkit-scrollbar { display:none; }
+  .chip { background:transparent; border:1px solid var(--border); color:var(--muted); font-family:'DM Sans',sans-serif; font-size:11px; padding:6px 12px; border-radius:100px; cursor:pointer; white-space:nowrap; transition:all 0.2s; flex-shrink:0; }
+  .chip:active { border-color:var(--accent); color:var(--accent); }
+  .chat-bar { padding:10px 16px; display:flex; gap:8px; border-top:1px solid var(--border); flex-shrink:0; }
+  .chat-bar input { flex:1; background:var(--card); border:1px solid var(--border); color:var(--text); font-family:'DM Sans',sans-serif; font-size:13px; padding:11px 14px; border-radius:100px; outline:none; }
+  .chat-bar input::placeholder { color:#444; }
+  .send-btn { background:var(--accent); color:#000; border:none; width:40px; height:40px; border-radius:50%; cursor:pointer; font-size:16px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .send-btn:disabled { opacity:0.4; cursor:not-allowed; }
+
+  /* PROFIL */
+  .profil-top { padding:20px 20px 16px; display:flex; flex-direction:column; align-items:center; gap:10px; }
+  .big-av { width:76px; height:76px; background:var(--accent); border-radius:50%; display:flex; align-items:center; justify-content:center; font-family:'Bebas Neue',sans-serif; font-size:28px; color:#000; letter-spacing:1px; }
+  .pname { font-family:'Bebas Neue',sans-serif; font-size:26px; letter-spacing:2px; }
+  .ptag { font-size:12px; color:var(--muted); }
+  .pstats { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; padding:0 20px 20px; }
+  .pstat { background:var(--card); border:1px solid var(--border); border-radius:14px; padding:14px; text-align:center; }
+  .pstat .pn { font-family:'Bebas Neue',sans-serif; font-size:26px; color:var(--accent); }
+  .pstat .pl { font-size:9px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; margin-top:2px; }
+  .settings { padding:0 20px; display:flex; flex-direction:column; gap:2px; margin-bottom:20px; }
+  .srow { background:var(--card); padding:15px 16px; display:flex; align-items:center; gap:12px; cursor:pointer; }
+  .srow:first-child { border-radius:14px 14px 0 0; }
+  .srow:last-child { border-radius:0 0 14px 14px; }
+  .srow:not(:last-child) { border-bottom:1px solid var(--border); }
+  .srow:active { background:var(--card2); }
+  .srow .sicon { width:32px; height:32px; background:var(--bg); border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:14px; flex-shrink:0; }
+  .srow span { font-size:14px; }
+  .srow small { margin-left:auto; font-size:11px; color:var(--muted); }
+  .logout-btn { margin:0 20px 20px; background:transparent; border:1px solid #333; color:var(--muted); width:calc(100% - 40px); padding:14px; border-radius:12px; font-family:'DM Sans',sans-serif; font-size:14px; cursor:pointer; transition:all 0.2s; }
+  .logout-btn:hover { border-color:#ff6b6b; color:#ff6b6b; }
+
+  /* BOTTOM NAV */
+  .bnav { position:fixed; bottom:0; left:50%; transform:translateX(-50%); width:390px; background:rgba(8,8,8,0.95); border-top:1px solid var(--border); backdrop-filter:blur(20px); display:none; padding:8px 0 18px; z-index:100; }
+  .bnav.visible { display:flex; }
+  .ni { flex:1; display:flex; flex-direction:column; align-items:center; gap:3px; cursor:pointer; padding:6px 0; }
+  .ni .ico { font-size:20px; opacity:0.3; transition:opacity 0.2s; }
+  .ni .lbl { font-size:9px; color:var(--muted); letter-spacing:0.5px; text-transform:uppercase; }
+  .ni.active .ico { opacity:1; }
+  .ni.active .lbl { color:var(--accent); }
+
+  /* LOADING */
+  .loading { position:fixed; inset:0; background:var(--bg); display:flex; align-items:center; justify-content:center; z-index:999; flex-direction:column; gap:16px; }
+  .loading .l { font-family:'Bebas Neue',sans-serif; font-size:36px; letter-spacing:6px; color:var(--accent); }
+  .spinner { width:24px; height:24px; border:2px solid var(--border); border-top-color:var(--accent); border-radius:50%; animation:spin 0.8s linear infinite; }
+  @keyframes spin { to{transform:rotate(360deg)} }
+
+  /* SETTINGS MODAL */
+  .smodal-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.85); backdrop-filter:blur(12px); z-index:200; display:none; align-items:flex-end; justify-content:center; }
+  .smodal-overlay.open { display:flex; }
+  .smodal { background:#111; border:1px solid var(--border); border-radius:24px 24px 0 0; padding:32px 24px 48px; width:100%; max-width:390px; animation:slideUp 0.3s ease; }
+  @keyframes slideUp { from{transform:translateY(100%)} to{transform:translateY(0)} }
+  .smodal-title { font-family:'Bebas Neue',sans-serif; font-size:22px; letter-spacing:2px; margin-bottom:20px; display:flex; justify-content:space-between; align-items:center; }
+  .smodal-close { background:transparent; border:none; color:var(--muted); font-size:20px; cursor:pointer; line-height:1; }
+  .smodal-field label { display:block; font-size:10px; color:var(--muted); letter-spacing:1.5px; text-transform:uppercase; margin-bottom:8px; }
+  .smodal-field input { width:100%; background:var(--card2); border:1px solid var(--border); color:var(--text); font-family:'DM Sans',sans-serif; font-size:15px; padding:14px 16px; border-radius:12px; outline:none; transition:border-color 0.2s; }
+  .smodal-field input:focus { border-color:rgba(190,242,100,0.5); }
+  .smodal-field input::placeholder { color:#333; }
+  .smodal-save { width:100%; padding:15px; background:var(--accent); color:#000; border:none; border-radius:12px; font-family:'DM Sans',sans-serif; font-size:15px; font-weight:600; cursor:pointer; margin-top:16px; transition:all 0.2s; }
+  .smodal-save:disabled { opacity:0.5; cursor:not-allowed; }
+  .smodal-feedback { text-align:center; font-size:13px; color:var(--accent); margin-top:12px; min-height:18px; }
+</style>
+</head>
+<body>
+
+<!-- LOADING -->
+<div class="loading" id="loading">
+  <div class="l">RYDR</div>
+  <div class="spinner"></div>
+</div>
+
+<!-- AUTH -->
+<div class="auth-page" id="p-auth">
+  <div class="auth-logo">RYDR</div>
+  <div class="auth-tag">AI-drevet cykeltræning</div>
+  <div class="auth-tabs">
+    <button class="atab on" id="at-login" onclick="switchAuth('login')">Log ind</button>
+    <button class="atab" id="at-signup" onclick="switchAuth('signup')">Opret konto</button>
+  </div>
+  <div class="aform" id="af-login">
+    <div class="afield"><label>Email</label><input type="email" id="login-email" placeholder="din@email.dk"></div>
+    <div class="afield"><label>Adgangskode</label><input type="password" id="login-pw" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()"></div>
+    <button class="auth-btn" onclick="doLogin()">Log ind</button>
+  </div>
+  <div class="aform" id="af-signup" style="display:none">
+    <div class="afield"><label>Navn</label><input type="text" id="signup-navn" placeholder="Dit navn"></div>
+    <div class="afield"><label>Email</label><input type="email" id="signup-email" placeholder="din@email.dk"></div>
+    <div class="afield"><label>Adgangskode</label><input type="password" id="signup-pw" placeholder="Min. 6 tegn" onkeydown="if(event.key==='Enter')doSignup()"></div>
+    <button class="auth-btn" onclick="doSignup()">Opret konto gratis</button>
+  </div>
+  <div class="auth-err" id="auth-err"></div>
+</div>
+
+<!-- HOME -->
+<div class="page" id="p-home">
+  <div class="topbar">
+    <div class="tlogo">RYDR</div>
+    <div class="tavatar" onclick="go('profil')">👤</div>
+  </div>
+  <div class="greeting">
+    <small>God dag,</small>
+    <h2 id="home-navn">Rytter <span>🚴</span></h2>
+  </div>
+  <div class="hero-card" onclick="go('traening')">
+    <small>I dag · Zone 2</small>
+    <h3>60 KM<br>TUR</h3>
+    <p>Lav intensitet · 2t 30m · Vejle Fjord rute</p>
+    <button class="hero-start">Start træning →</button>
+  </div>
+  <p class="row-label">Denne uge</p>
+  <div class="stats-grid">
+    <div class="scard"><div><span class="num" id="stat-km">0</span><span class="unit">km</span></div><div class="lbl">Kørt</div></div>
+    <div class="scard"><div><span class="num" id="stat-ture">0</span></div><div class="lbl">Ture logget</div></div>
+    <div class="scard"><div><span class="num" id="stat-hm">0</span><span class="unit">m</span></div><div class="lbl">Højdemeter</div></div>
+    <div class="scard"><div><span class="num" id="stat-fart">–</span><span class="unit" id="stat-fart-u"></span></div><div class="lbl">Gns. fart</div></div>
+  </div>
+  <p class="row-label">Hurtige valg</p>
+  <div class="action-list">
+    <div class="arow" onclick="go('chat')"><div class="aicon">🤖</div><div class="atext"><p>Spørg AI-træneren</p><small>Få personlige råd nu</small></div><span class="achev">›</span></div>
+    <div class="arow" onclick="go('log')"><div class="aicon">➕</div><div class="atext"><p>Log en tur</p><small>Tilføj dagens træning</small></div><span class="achev">›</span></div>
+    <div class="arow" onclick="go('traening')"><div class="aicon">📅</div><div class="atext"><p>Se træningsplan</p><small>4-ugers program</small></div><span class="achev">›</span></div>
+  </div>
+</div>
+
+<!-- TRÆNING -->
+<div class="page" id="p-traening">
+  <div class="topbar"><div class="tlogo">RYDR</div><div style="font-size:11px;color:var(--muted);letter-spacing:1px;text-transform:uppercase">Uge plan</div></div>
+  <div class="page-title">Træningsplan</div>
+  <div class="week-strip">
+    <div class="day-col"><span>Man</span><div class="ddot done">✓</div></div>
+    <div class="day-col"><span>Tir</span><div class="ddot done">✓</div></div>
+    <div class="day-col"><span>Ons</span><div class="ddot rest">–</div></div>
+    <div class="day-col"><span>Tor</span><div class="ddot done">✓</div></div>
+    <div class="day-col"><span>Fre</span><div class="ddot today">I</div></div>
+    <div class="day-col"><span>Lør</span><div class="ddot next">·</div></div>
+    <div class="day-col"><span>Søn</span><div class="ddot next">·</div></div>
+  </div>
+  <div class="t-list">
+    <div class="tcard done-card"><div class="tic">🏋️</div><div class="tinfo"><p>Styrketræning</p><small>Mandag · 45 min · Core & ben</small></div><div class="tbadge done">✓ Færdig</div></div>
+    <div class="tcard done-card"><div class="tic">🚴</div><div class="tinfo"><p>Zone 2 tur</p><small>Tirsdag · 80 km</small></div><div class="tbadge done">✓ Færdig</div></div>
+    <div class="tcard done-card"><div class="tic">😴</div><div class="tinfo"><p>Aktiv hviledag</p><small>Onsdag · Let stræk</small></div><div class="tbadge done">✓ Færdig</div></div>
+    <div class="tcard done-card"><div class="tic">⚡</div><div class="tinfo"><p>Sweetspot intervaller</p><small>Torsdag · 3×12 min</small></div><div class="tbadge done">✓ Færdig</div></div>
+    <div class="tcard today-card"><div class="tic">🌿</div><div class="tinfo"><p>Zone 2 tur</p><small>I dag · 60 km · Vejle Fjord</small></div><div class="tbadge today">I dag</div></div>
+    <div class="tcard"><div class="tic">🏔️</div><div class="tinfo"><p>Lang bakke-tur</p><small>Lørdag · 100 km · 1500 hm</small></div><div class="tbadge soon">Snart</div></div>
+    <div class="tcard"><div class="tic">😴</div><div class="tinfo"><p>Hviledag</p><small>Søndag · Fuld restitution</small></div><div class="tbadge soon">Snart</div></div>
+  </div>
+</div>
+
+<!-- LOG -->
+<div class="page" id="p-log">
+  <div class="topbar"><div class="tlogo">RYDR</div><div style="font-size:11px;color:var(--muted);letter-spacing:1px;text-transform:uppercase">Log tur</div></div>
+  <div class="page-title">Log en tur</div>
+  <div class="log-form" id="logForm">
+    <div class="lfield"><label>Type</label>
+      <select id="turType"><option>Zone 2 tur</option><option>Intervaller</option><option>Lang tur</option><option>Bakke-tur</option><option>Restitutionstur</option></select>
+    </div>
+    <div class="row2">
+      <div class="lfield"><label>Distance (km)</label><input type="number" id="dist" placeholder="60" min="0"></div>
+      <div class="lfield"><label>Tid (min)</label><input type="number" id="tid" placeholder="150" min="0"></div>
+    </div>
+    <div class="row2">
+      <div class="lfield"><label>Gns. puls</label><input type="number" id="puls" placeholder="148" min="0" max="250"></div>
+      <div class="lfield"><label>Højdemeter</label><input type="number" id="hm" placeholder="420" min="0"></div>
+    </div>
+    <div class="lfield"><label>Følelse (1–10)</label>
+      <select id="feeling"><option value="10">10 — Fantastisk 🔥</option><option value="8">8 — Rigtig god 💪</option><option value="6" selected>6 — OK 👍</option><option value="4">4 — Hård dag 😓</option><option value="2">2 — Meget hård 😵</option></select>
+    </div>
+  </div>
+  <button class="log-btn" id="logBtn" onclick="logTur()">Gem tur →</button>
+  <div class="log-success" id="logSuccess">
+    <div class="big">🎉</div>
+    <p>Tur gemt i databasen!</p>
+    <small id="logSummary"></small>
+  </div>
+  <p class="row-label" style="margin-top:20px">Seneste ture</p>
+  <div class="recent-list" id="recentList"><div style="padding:0 0 8px;color:var(--muted);font-size:13px">Ingen ture endnu — log din første tur! 🚴</div></div>
+</div>
+
+<!-- AI CHAT -->
+<div class="page" id="p-chat">
+  <div class="topbar"><div class="tlogo">RYDR</div><div style="font-size:11px;color:var(--muted);letter-spacing:1px;text-transform:uppercase">AI Træner</div></div>
+  <div class="chat-msgs" id="chatMsgs">
+    <div class="msg ai"><div class="av ai">AI</div><div class="bbl ai">Hej! Jeg er din personlige Rydr-træner 🚴 Fortæl mig om din seneste tur eller hvad du vil forbedre.</div></div>
+  </div>
+  <div class="chips" id="chips">
+    <button class="chip" onclick="useChip(this)">Min 100km tur — hvad kan jeg forbedre?</button>
+    <button class="chip" onclick="useChip(this)">Lav mig et 4-ugers program</button>
+    <button class="chip" onclick="useChip(this)">Hvad skal jeg spise på lange ture?</button>
+    <button class="chip" onclick="useChip(this)">Hvordan øger jeg min FTP?</button>
+  </div>
+  <div class="chat-bar">
+    <input id="cinput" placeholder="Skriv til din træner..." onkeydown="if(event.key==='Enter')sendChat()">
+    <button class="send-btn" id="sendBtn" onclick="sendChat()">→</button>
+  </div>
+</div>
+
+<!-- PROFIL -->
+<div class="page" id="p-profil">
+  <div class="topbar"><div class="tlogo">RYDR</div><div style="font-size:11px;color:var(--muted);letter-spacing:1px;text-transform:uppercase">Profil</div></div>
+  <div class="profil-top">
+    <div class="big-av" id="profil-av">?</div>
+    <div class="pname" id="profil-navn">–</div>
+    <div class="ptag" id="profil-email">–</div>
+  </div>
+  <div class="pstats">
+    <div class="pstat"><div class="pn" id="p-km">0</div><div class="pl">Km i alt</div></div>
+    <div class="pstat"><div class="pn" id="p-ture">0</div><div class="pl">Ture</div></div>
+    <div class="pstat"><div class="pn" id="p-fart">–</div><div class="pl">Gns km/t</div></div>
+  </div>
+  <p class="row-label">Indstillinger</p>
+  <div class="settings">
+    <div class="srow" onclick="openSetting('maal')"><div class="sicon">🎯</div><span>Mit mål</span><small id="val-maal">Sæt mål ›</small></div>
+    <div class="srow" onclick="openSetting('cykel')"><div class="sicon">🚴</div><span>Min cykel</span><small id="val-cykel">Tilføj ›</small></div>
+    <div class="srow" onclick="openSetting('puls')"><div class="sicon">❤️</div><span>Max puls</span><small id="val-puls">Indstil ›</small></div>
+    <div class="srow" onclick="openSetting('ftp')"><div class="sicon">⚡</div><span>FTP</span><small id="val-ftp">Indstil ›</small></div>
+    <div class="srow" onclick="openSetting('navn')"><div class="sicon">👤</div><span>Mit navn</span><small id="val-navn">Rediger ›</small></div>
+    <div class="srow" onclick="window.location.href='https://getrydr.netlify.app'"><div class="sicon">⭐</div><span>Opgrader til Pro</span><small>79 kr/md ›</small></div>
+  </div>
+  <button class="logout-btn" onclick="doLogout()">Log ud</button>
+</div>
+
+<!-- SETTINGS MODAL -->
+<div class="smodal-overlay" id="smodalOverlay" onclick="if(event.target===this)closeSetting()">
+  <div class="smodal" id="smodalBox">
+    <div class="smodal-title">
+      <span id="smodalTitle">Indstilling</span>
+      <button class="smodal-close" onclick="closeSetting()">✕</button>
+    </div>
+    <div class="smodal-field">
+      <label id="smodalLabel">Værdi</label>
+      <input id="smodalInput" type="text" placeholder="">
+    </div>
+    <button class="smodal-save" id="smodalSave" onclick="saveSetting()">Gem →</button>
+    <div class="smodal-feedback" id="smodalFeedback"></div>
+  </div>
+</div>
+
+<!-- BOTTOM NAV -->
+<nav class="bnav" id="bnav">
+  <div class="ni active" onclick="go('home')" id="n-home"><div class="ico">🏠</div><div class="lbl">Hjem</div></div>
+  <div class="ni" onclick="go('traening')" id="n-traening"><div class="ico">📅</div><div class="lbl">Træning</div></div>
+  <div class="ni" onclick="go('log')" id="n-log"><div class="ico">➕</div><div class="lbl">Log</div></div>
+  <div class="ni" onclick="go('chat')" id="n-chat"><div class="ico">🤖</div><div class="lbl">AI Træner</div></div>
+  <div class="ni" onclick="go('profil')" id="n-profil"><div class="ico">👤</div><div class="lbl">Profil</div></div>
+</nav>
+
+<script>
+  // SUPABASE
+  const { createClient } = supabase;
+  const sb = createClient(
+    'https://drbxczpypcopdsbjdvdr.supabase.co',
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRyYnhjenB5cGNvcGRzYmpkdmRyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxOTczNjQsImV4cCI6MjA5NDc3MzM2NH0.cLmFhA1AaN9fdkeWmptqn0n0feTW69VpXsKKiappWn0'
+  );
+
+  let currentUser = null;
+
+  // INIT
+  window.addEventListener('load', async () => {
+    const { data: { session } } = await sb.auth.getSession();
+    if (session) {
+      currentUser = session.user;
+      await loadApp();
+    } else {
+      showAuth();
+    }
+    document.getElementById('loading').style.display = 'none';
+  });
+
+  function showAuth() {
+    document.getElementById('p-auth').classList.add('active');
+    document.getElementById('bnav').classList.remove('visible');
+  }
+
+  async function loadApp() {
+    document.getElementById('p-auth').classList.remove('active');
+    document.getElementById('bnav').classList.add('visible');
+    await loadProfil();
+    await loadStats();
+    await loadRecentTure();
+    go('home');
+  }
+
+  // AUTH
+  function switchAuth(tab) {
+    document.getElementById('af-login').style.display = tab==='login'?'block':'none';
+    document.getElementById('af-signup').style.display = tab==='signup'?'block':'none';
+    document.getElementById('at-login').className = 'atab'+(tab==='login'?' on':'');
+    document.getElementById('at-signup').className = 'atab'+(tab==='signup'?' on':'');
+    document.getElementById('auth-err').textContent = '';
+  }
+
+  async function doLogin() {
+    const email = document.getElementById('login-email').value.trim();
+    const pw = document.getElementById('login-pw').value;
+    if (!email || !pw) { document.getElementById('auth-err').textContent = 'Udfyld email og adgangskode'; return; }
+    const { data, error } = await sb.auth.signInWithPassword({ email, password:pw });
+    if (error) { document.getElementById('auth-err').textContent = 'Forkert email eller adgangskode'; return; }
+    currentUser = data.user;
+    await loadApp();
+  }
+
+  async function doSignup() {
+    const navn = document.getElementById('signup-navn').value.trim();
+    const email = document.getElementById('signup-email').value.trim();
+    const pw = document.getElementById('signup-pw').value;
+    if (!navn || !email || !pw) { document.getElementById('auth-err').textContent = 'Udfyld alle felter'; return; }
+    if (pw.length < 6) { document.getElementById('auth-err').textContent = 'Adgangskode skal være min. 6 tegn'; return; }
+    const { data, error } = await sb.auth.signUp({ email, password:pw });
+    if (error) { document.getElementById('auth-err').textContent = 'Noget gik galt — prøv igen'; return; }
+    // Vis bekræftelsesbesked i stedet for at logge ind med det samme
+    document.getElementById('af-signup').style.display = 'none';
+    document.getElementById('auth-tabs').style.display = 'none';
+    document.getElementById('auth-err').style.color = 'var(--accent)';
+    document.getElementById('auth-err').innerHTML = `
+      <div style="text-align:center;padding:12px 0">
+        <div style="font-size:32px;margin-bottom:12px">📬</div>
+        <div style="font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:2px;color:var(--accent);margin-bottom:8px">TJEK DIN INBOX</div>
+        <div style="font-size:13px;color:#888;line-height:1.7;font-weight:300">Vi har sendt en bekræftelsesmail til<br><span style="color:var(--text)">${email}</span><br><br>Klik på linket i mailen for at aktivere din konto.</div>
+      </div>
+    `;
+  }
+
+  async function doLogout() {
+    await sb.auth.signOut();
+    currentUser = null;
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    showAuth();
+  }
+
+  // LOAD PROFIL
+  async function loadProfil() {
+    if (!currentUser) return;
+    const { data } = await sb.from('profiles').select('*').eq('id', currentUser.id).single();
+    const navn = data?.navn || currentUser.email.split('@')[0];
+    document.getElementById('home-navn').innerHTML = navn + ' <span>🚴</span>';
+    document.getElementById('profil-navn').textContent = navn;
+    document.getElementById('profil-email').textContent = currentUser.email;
+    document.getElementById('profil-av').textContent = navn.charAt(0).toUpperCase();
+    document.getElementById('val-navn').textContent = navn + ' ›';
+    if (data?.maal)     document.getElementById('val-maal').textContent  = data.maal + ' ›';
+    if (data?.cykel)    document.getElementById('val-cykel').textContent = data.cykel + ' ›';
+    if (data?.max_puls) document.getElementById('val-puls').textContent  = data.max_puls + ' bpm ›';
+    if (data?.ftp)      document.getElementById('val-ftp').textContent   = data.ftp + 'W ›';
+  }
+
+  // LOAD STATS
+  async function loadStats() {
+    if (!currentUser) return;
+    const { data } = await sb.from('ture').select('*').eq('user_id', currentUser.id);
+    if (!data || data.length === 0) return;
+    const totalKm = data.reduce((s,t) => s + (t.distance||0), 0);
+    const totalHm = data.reduce((s,t) => s + (t.hoejdemeter||0), 0);
+    const totalTid = data.reduce((s,t) => s + (t.tid_minutter||0), 0);
+    const gnsF = totalTid > 0 ? (totalKm / (totalTid/60)).toFixed(1) : '–';
+
+    // Hjem stats
+    document.getElementById('stat-km').textContent = Math.round(totalKm);
+    document.getElementById('stat-ture').textContent = data.length;
+    document.getElementById('stat-hm').textContent = Math.round(totalHm);
+    document.getElementById('stat-fart').textContent = gnsF;
+    if (gnsF !== '–') document.getElementById('stat-fart-u').textContent = 'km/t';
+
+    // Profil stats
+    document.getElementById('p-km').textContent = Math.round(totalKm);
+    document.getElementById('p-ture').textContent = data.length;
+    document.getElementById('p-fart').textContent = gnsF;
+  }
+
+  // LOG TUR
+  async function logTur() {
+    const dist = parseFloat(document.getElementById('dist').value);
+    const tid = parseInt(document.getElementById('tid').value);
+    const type = document.getElementById('turType').value;
+    const puls = parseInt(document.getElementById('puls').value) || null;
+    const hm = parseInt(document.getElementById('hm').value) || null;
+    const feeling = parseInt(document.getElementById('feeling').value);
+
+    if (!dist || !tid) { alert('Udfyld distance og tid 👆'); return; }
+
+    document.getElementById('logBtn').disabled = true;
+    document.getElementById('logBtn').textContent = 'Gemmer...';
+
+    const { error } = await sb.from('ture').insert({
+      user_id: currentUser.id,
+      type, distance: dist,
+      tid_minutter: tid,
+      puls, hoejdemeter: hm, feeling
+    });
+
+    document.getElementById('logBtn').disabled = false;
+    document.getElementById('logBtn').textContent = 'Gem tur →';
+
+    if (error) { alert('Fejl ved gemning — prøv igen'); return; }
+
+    const fart = (dist / (tid/60)).toFixed(1);
+    document.getElementById('logSummary').textContent = `${type} · ${dist} km · ${tid} min · ${fart} km/t`;
+    document.getElementById('logForm').style.display = 'none';
+    document.getElementById('logBtn').style.display = 'none';
+    document.getElementById('logSuccess').style.display = 'block';
+
+    await loadStats();
+    await loadRecentTure();
+
+    setTimeout(() => {
+      document.getElementById('logForm').style.display = 'flex';
+      document.getElementById('logBtn').style.display = 'block';
+      document.getElementById('logSuccess').style.display = 'none';
+      document.getElementById('dist').value = '';
+      document.getElementById('tid').value = '';
+      document.getElementById('puls').value = '';
+      document.getElementById('hm').value = '';
+    }, 3000);
+  }
+
+  // LOAD RECENT TURE
+  async function loadRecentTure() {
+    if (!currentUser) return;
+    const { data } = await sb.from('ture').select('*').eq('user_id', currentUser.id).order('dato', {ascending:false}).limit(5);
+    const list = document.getElementById('recentList');
+    if (!data || data.length === 0) {
+      list.innerHTML = '<div style="color:var(--muted);font-size:13px">Ingen ture endnu — log din første tur! 🚴</div>';
+      return;
+    }
+    list.innerHTML = data.map(t => {
+      const fart = t.tid_minutter > 0 ? (t.distance / (t.tid_minutter/60)).toFixed(1) : '–';
+      const dato = new Date(t.dato).toLocaleDateString('da-DK', {day:'numeric', month:'short'});
+      return `<div class="rtur">
+        <div class="rtur-left"><p>${t.type}</p><small>${dato} · ${t.tid_minutter} min</small></div>
+        <div class="rtur-right"><p>${t.distance} km</p><small>${fart} km/t</small></div>
+      </div>`;
+    }).join('');
+  }
+
+  // NAVIGATION
+  function go(page) {
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.ni').forEach(n => n.classList.remove('active'));
+    document.getElementById('p-' + page).classList.add('active');
+    document.getElementById('n-' + page).classList.add('active');
+  }
+
+  // AI CHAT
+  const SYSTEM = `Du er Rydrs AI-trænerassistent — en professionel cykelcoach der taler dansk.
+Hjælp cyklister med træning, ernæring, restitution og teknik baseret på professionelle standarder.
+Vær konkret, motiverende og kortfattet — max 3-4 sætninger. Brug "du"-form.`;
+  const history = [];
+  let busy = false;
+
+  function useChip(btn) {
+    document.getElementById('cinput').value = btn.textContent;
+    document.getElementById('chips').style.display = 'none';
+    sendChat();
+  }
+
+  function addMsg(role, text) {
+    const c = document.getElementById('chatMsgs');
+    const d = document.createElement('div');
+    d.className = `msg ${role}`;
+    d.innerHTML = `<div class="av ${role}">${role==='ai'?'AI':'DU'}</div><div class="bbl ${role}">${text.replace(/\n/g,'<br>')}</div>`;
+    c.appendChild(d); c.scrollTop = c.scrollHeight;
+  }
+
+  function showTyping() {
+    const c = document.getElementById('chatMsgs');
+    const d = document.createElement('div');
+    d.className='msg ai'; d.id='typ';
+    d.innerHTML=`<div class="av ai">AI</div><div class="typing"><span></span><span></span><span></span></div>`;
+    c.appendChild(d); c.scrollTop = c.scrollHeight;
+  }
+
+  async function sendChat() {
+    if (busy) return;
+    const input = document.getElementById('cinput');
+    const text = input.value.trim();
+    if (!text) return;
+    document.getElementById('chips').style.display = 'none';
+    input.value = '';
+    addMsg('user', text);
+    history.push({ role:'user', content:text });
+    busy = true;
+    document.getElementById('sendBtn').disabled = true;
+    showTyping();
+    try {
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({ model:'claude-sonnet-4-20250514', max_tokens:1000, system:SYSTEM, messages:history })
+      });
+      const data = await res.json();
+      const reply = data.content?.[0]?.text || 'Prøv igen.';
+      document.getElementById('typ')?.remove();
+      addMsg('ai', reply);
+      history.push({ role:'assistant', content:reply });
+    } catch {
+      document.getElementById('typ')?.remove();
+      addMsg('ai', 'AI-chat kræver en backend — det er næste skridt i byggeprocessen! 💪');
+    }
+    busy = false;
+    document.getElementById('sendBtn').disabled = false;
+  }
+
+  // SETTINGS MODAL
+  let currentSetting = null;
+  const settingConfig = {
+    maal:  { title:'Mit mål',   label:'Hvad er dit mål?',        placeholder:'Fx: Køre 200km på 6 timer', type:'text' },
+    cykel: { title:'Min cykel', label:'Hvad hedder din cykel?',  placeholder:'Fx: Trek Domane SL5',       type:'text' },
+    puls:  { title:'Max puls',  label:'Din max puls (bpm)',       placeholder:'Fx: 196',                   type:'number' },
+    ftp:   { title:'FTP',       label:'Din FTP i watt',          placeholder:'Fx: 248',                   type:'number' },
+    navn:  { title:'Mit navn',  label:'Dit navn',                placeholder:'Fx: August',                type:'text' },
+  };
+
+  function openSetting(key) {
+    currentSetting = key;
+    const cfg = settingConfig[key];
+    document.getElementById('smodalTitle').textContent = cfg.title;
+    document.getElementById('smodalLabel').textContent = cfg.label;
+    const inp = document.getElementById('smodalInput');
+    inp.placeholder = cfg.placeholder;
+    inp.type = cfg.type;
+    // Pre-fill with current value
+    const cur = document.getElementById('val-' + key)?.textContent.replace(' ›','').replace('Sæt mål','').replace('Tilføj','').replace('Indstil','').replace('Rediger','').trim();
+    inp.value = (cur && cur.length > 0 && !['Sæt mål','Tilføj','Indstil','Rediger'].includes(cur)) ? cur : '';
+    document.getElementById('smodalFeedback').textContent = '';
+    document.getElementById('smodalOverlay').classList.add('open');
+    setTimeout(() => inp.focus(), 300);
+  }
+
+  function closeSetting() {
+    document.getElementById('smodalOverlay').classList.remove('open');
+    currentSetting = null;
+  }
+
+  async function saveSetting() {
+    if (!currentSetting || !currentUser) return;
+    const val = document.getElementById('smodalInput').value.trim();
+    if (!val) return;
+
+    document.getElementById('smodalSave').disabled = true;
+    document.getElementById('smodalSave').textContent = 'Gemmer...';
+
+    const updateData = {};
+    if (currentSetting === 'maal')  updateData.maal = val;
+    if (currentSetting === 'cykel') updateData.cykel = val;
+    if (currentSetting === 'puls')  updateData.max_puls = parseInt(val);
+    if (currentSetting === 'ftp')   updateData.ftp = parseInt(val);
+    if (currentSetting === 'navn')  updateData.navn = val;
+
+    const { error } = await sb.from('profiles').update(updateData).eq('id', currentUser.id);
+
+    document.getElementById('smodalSave').disabled = false;
+    document.getElementById('smodalSave').textContent = 'Gem →';
+
+    if (error) {
+      document.getElementById('smodalFeedback').textContent = 'Fejl — prøv igen';
+      document.getElementById('smodalFeedback').style.color = '#ff6b6b';
+      return;
+    }
+
+    document.getElementById('smodalFeedback').textContent = '✓ Gemt!';
+    document.getElementById('smodalFeedback').style.color = 'var(--accent)';
+
+    // Update displayed value
+    const el = document.getElementById('val-' + currentSetting);
+    if (el) el.textContent = val + ' ›';
+
+    // Update name in profile if changed
+    if (currentSetting === 'navn') {
+      document.getElementById('profil-navn').textContent = val;
+      document.getElementById('home-navn').innerHTML = val + ' <span>🚴</span>';
+      document.getElementById('profil-av').textContent = val.charAt(0).toUpperCase();
+    }
+
+    setTimeout(() => closeSetting(), 1000);
+  }
+
+</script>
+</body>
+</html>
